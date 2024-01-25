@@ -8,6 +8,8 @@ namespace AsusWakeOnLan;
 
 class Program
 {
+    private static bool? isEnabled;
+
     static void Main()
     {
         LoginInfo loginInfo = ReadConfig();
@@ -34,6 +36,7 @@ class Program
         }
         catch (Exception exception)
         {
+            Console.WriteLine($"Was enabled = {isEnabled}");
             Console.WriteLine(exception);
             Console.WriteLine();
             Console.WriteLine(driver.PageSource);
@@ -80,7 +83,8 @@ class Program
             if (elements.Count == 0)
                 return null;
             IWebElement element = elements[0];
-            return element is { Displayed: true, Enabled: true } ? element : null;
+            isEnabled = element.Enabled;
+            return element.Enabled ? element : null;
         })!;
         singInInput.SendKeys(loginInfo.Login);
         driver.FindElement(By.Name(singInNamePassword)).SendKeys(loginInfo.Password);
