@@ -19,14 +19,7 @@ class Program
         Console.WriteLine("Driver creation");
         var driverService = FirefoxDriverService.CreateDefaultService();
         driverService.HideCommandPromptWindow = true;
-        var options = new FirefoxOptions
-        {
-            AcceptInsecureCertificates = true,
-        };
-        options.AddArgument("--headless");
-        options.AddArgument("--window-size=1920,1080");
-        options.PageLoadStrategy = PageLoadStrategy.Eager;
-        WebDriver driver = new FirefoxDriver(driverService, options);
+        WebDriver driver = new FirefoxDriver(driverService, GetOptions());
         bool wasException = true;
         try
         {
@@ -58,6 +51,18 @@ class Program
         }
     }
 
+    private static FirefoxOptions GetOptions()
+    {
+        var options = new FirefoxOptions
+        {
+            AcceptInsecureCertificates = true,
+        };
+        options.AddArgument("--headless");
+        // Size is important for consistent behaviour
+        options.AddArgument("--window-size=1920,1080");
+        return options;
+    }
+
     private static void RunWol(WebDriver driver, LoginInfo loginInfo)
     {
         string url = loginInfo.RootUrl + "/Main_Login.asp";
@@ -73,7 +78,6 @@ class Program
         const string logoutScript = "javascript:logout();";
 
         Console.WriteLine("Load start page");
-        //driver.Manage().Timeouts().ImplicitWait = TimeSpan.FromSeconds(5);
         driver.Navigate().GoToUrl(url);
         Console.WriteLine("Logging in");
         var webDriverWait = new WebDriverWait(driver, TimeSpan.FromSeconds(waitForActiveSeconds));
