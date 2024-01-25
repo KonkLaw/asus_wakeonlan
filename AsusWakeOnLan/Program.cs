@@ -1,6 +1,7 @@
 ﻿using System.Collections.ObjectModel;
 using System.Text;
 using OpenQA.Selenium;
+using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Firefox;
 using OpenQA.Selenium.Support.UI;
 
@@ -9,6 +10,7 @@ namespace AsusWakeOnLan;
 class Program
 {
     private static bool? isDisplayed;
+    private static string? pageSource;
 
     static void Main()
     {
@@ -22,6 +24,8 @@ class Program
             AcceptInsecureCertificates = true,
         };
         options.AddArgument("--headless");
+        options.AddArgument("--window-size=1920,1080");
+        options.PageLoadStrategy = PageLoadStrategy.Eager;
         WebDriver driver = new FirefoxDriver(driverService, options);
         bool wasException = true;
         try
@@ -39,7 +43,7 @@ class Program
             Console.WriteLine($"isDisplayed = {isDisplayed}");
             Console.WriteLine(exception);
             Console.WriteLine();
-            Console.WriteLine(driver.PageSource);
+            Console.WriteLine(pageSource);
             Console.WriteLine();
         }
         finally
@@ -59,7 +63,7 @@ class Program
         string url = loginInfo.RootUrl + "/Main_Login.asp";
 
         const string wolLocalPath = "/Main_WOL_Content.asp";
-        const int waitForActiveSeconds = 10;
+        const int waitForActiveSeconds = 15;
         const string singInIdLogin = "login_username";
         const string sessionIsBusyClass = "nologin-text";
         const string singInNamePassword = "login_passwd";
@@ -75,16 +79,20 @@ class Program
         var webDriverWait = new WebDriverWait(driver, TimeSpan.FromSeconds(waitForActiveSeconds));
         IWebElement singInInput = webDriverWait.Until(d =>
         {
+            Console.WriteLine(" Waiting for load");
             ReadOnlyCollection<IWebElement>? elements = d.FindElements(By.ClassName(sessionIsBusyClass));
             if (elements.Count > 0)
                 throw new NoLoginException(elements[0].Text);
 
+            pageSource = driver.PageSource;
             elements = d.FindElements(By.Id(singInIdLogin));
             if (elements.Count == 0)
                 return null;
             IWebElement element = elements[0];
+            if (element.Displayed)
+                return element;
             isDisplayed = element.Displayed;
-            return element.Displayed ? element : null;
+            return null;
         })!;
         singInInput.SendKeys(loginInfo.Login);
         driver.FindElement(By.Name(singInNamePassword)).SendKeys(loginInfo.Password);
