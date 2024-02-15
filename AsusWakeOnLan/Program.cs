@@ -1,7 +1,6 @@
 ﻿using System.Collections.ObjectModel;
 using System.Text;
 using OpenQA.Selenium;
-using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Firefox;
 using OpenQA.Selenium.Support.UI;
 
@@ -69,6 +68,7 @@ class Program
 
         const string wolLocalPath = "/Main_WOL_Content.asp";
         const int waitForActiveSeconds = 15;
+        const string logoutClass = "logout-text";
         const string singInIdLogin = "login_username";
         const string sessionIsBusyClass = "nologin-text";
         const string singInNamePassword = "login_passwd";
@@ -83,11 +83,19 @@ class Program
         var webDriverWait = new WebDriverWait(driver, TimeSpan.FromSeconds(waitForActiveSeconds));
         IWebElement singInInput = webDriverWait.Until(d =>
         {
-            Console.WriteLine(" Waiting for load");
             ReadOnlyCollection<IWebElement>? elements = d.FindElements(By.ClassName(sessionIsBusyClass));
             if (elements.Count > 0)
                 throw new NoLoginException(elements[0].Text);
 
+            ReadOnlyCollection<IWebElement>? logoutElements = d.FindElements(By.ClassName(logoutClass));
+            if (logoutElements.Count > 0)
+            {
+                d.Navigate().Refresh();
+                Console.WriteLine(" Logout screen. Reload.");
+                return null;
+            }
+
+            Console.WriteLine(" Waiting for load");
             pageSource = driver.PageSource;
             elements = d.FindElements(By.Id(singInIdLogin));
             if (elements.Count == 0)
