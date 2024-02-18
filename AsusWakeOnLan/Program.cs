@@ -8,49 +8,60 @@ namespace AsusWakeOnLan;
 
 class Program
 {
-    private static bool? isDisplayed;
-    private static string? pageSource;
+    private static WebDriver? driver;
 
-    static void Main()
+    private static void Main()
     {
-        LoginInfo loginInfo = ReadConfig();
+        AppDomain.CurrentDomain.ProcessExit += HandleByDriverDisposing;
+        AppDomain.CurrentDomain.UnhandledException += HandleByDriverDisposing;
 
+        LoginInfo loginInfo = ReadConfig();
         Console.WriteLine("Driver creation");
-        var driverService = FirefoxDriverService.CreateDefaultService();
-        driverService.HideCommandPromptWindow = true;
-        WebDriver driver = new FirefoxDriver(driverService, GetOptions());
-        bool wasException = true;
+        driver = GetWebDriver();
         try
         {
             RunWol(driver, loginInfo);
-            wasException = false;
             Console.WriteLine("Success");
         }
         catch (NoLoginException exception)
         {
             Console.WriteLine(exception.Message);
+            Console.ReadLine();
+            Console.WriteLine("Press any key");
+            Console.ReadLine();
         }
         catch (Exception exception)
         {
-            Console.WriteLine($"isDisplayed = {isDisplayed}");
             Console.WriteLine(exception);
             Console.WriteLine();
-            Console.WriteLine(pageSource);
-            Console.WriteLine();
+            Console.WriteLine("Press any key");
+            Console.ReadLine();
         }
         finally
         {
             driver.Quit();
         }
-
-        if (wasException)
-        {
-            Console.WriteLine("Press any key");
-            Console.ReadLine();
-        }
     }
 
-    private static FirefoxOptions GetOptions()
+    private static LoginInfo ReadConfig()
+    {
+        string[] settings = File.ReadAllLines("settings.txt");
+        string login = Encoding.UTF8.GetString(Convert.FromBase64String(settings[0]));
+        string password = Encoding.UTF8.GetString(Convert.FromBase64String(settings[1]));
+        string rootUrl = settings[2];
+        string mac = settings[3];
+        return new LoginInfo(login, password, rootUrl, mac);
+    }
+
+    private static WebDriver GetWebDriver()
+    {
+        var driverService = FirefoxDriverService.CreateDefaultService();
+        driverService.HideCommandPromptWindow = true;
+        WebDriver webDriver = new FirefoxDriver(driverService, GetFirefoxOptions());
+        return webDriver;
+    }
+
+    private static FirefoxOptions GetFirefoxOptions()
     {
         var options = new FirefoxOptions
         {
@@ -96,14 +107,12 @@ class Program
             }
 
             Console.WriteLine(" Waiting for load");
-            pageSource = driver.PageSource;
             elements = d.FindElements(By.Id(singInIdLogin));
             if (elements.Count == 0)
                 return null;
             IWebElement element = elements[0];
             if (element.Displayed)
                 return element;
-            isDisplayed = element.Displayed;
             return null;
         })!;
         singInInput.SendKeys(loginInfo.Login);
@@ -121,15 +130,7 @@ class Program
         driver.SwitchTo().Alert().Accept();
     }
 
-    private static LoginInfo ReadConfig()
-    {
-        string[] settings = File.ReadAllLines("settings.txt");
-        string login = Encoding.UTF8.GetString(Convert.FromBase64String(settings[0]));
-        string password = Encoding.UTF8.GetString(Convert.FromBase64String(settings[1]));
-        string rootUrl = settings[2];
-        string mac = settings[3];
-        return new LoginInfo(login, password, rootUrl, mac);
-    }
+    private static void HandleByDriverDisposing(object? sender, EventArgs e) => driver?.Dispose();
 }
 
 record LoginInfo(string Login, string Password, string RootUrl, string Mac);
