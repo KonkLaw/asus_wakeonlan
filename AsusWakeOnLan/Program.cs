@@ -23,10 +23,10 @@ class Program
             RunWol(driver, loginInfo);
             Console.WriteLine("Success");
         }
-        catch (NoLoginException exception)
+        catch (WolException exception)
         {
             Console.WriteLine(exception.Message);
-            Console.ReadLine();
+            Console.WriteLine();
             Console.WriteLine("Press any key");
             Console.ReadLine();
         }
@@ -89,14 +89,34 @@ class Program
         const string logoutScript = "javascript:logout();";
 
         Console.WriteLine("Load start page");
-        driver.Navigate().GoToUrl(url);
+        TimeSpan defaultTimeout = driver.Manage().Timeouts().PageLoad;
+        const int defaultLoginTimeoutSec = 1;
+        driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(defaultLoginTimeoutSec);
+        int connectionAttempt = 5;
+        while (true)
+        {
+            try
+            {
+                driver.Navigate().GoToUrl(url);
+                break;
+            }
+            catch (WebDriverException)
+            {
+                connectionAttempt--;
+                if (connectionAttempt == 0)
+                    throw new WolException("Can't connect to router");
+                Console.WriteLine(" Can't connect to router. Reload.");
+            }
+        }
+        driver.Manage().Timeouts().PageLoad = defaultTimeout;
+
         Console.WriteLine("Logging in");
         var webDriverWait = new WebDriverWait(driver, TimeSpan.FromSeconds(waitForActiveSeconds));
         IWebElement singInInput = webDriverWait.Until(d =>
         {
             ReadOnlyCollection<IWebElement>? elements = d.FindElements(By.ClassName(sessionIsBusyClass));
             if (elements.Count > 0)
-                throw new NoLoginException(elements[0].Text);
+                throw new WolException(elements[0].Text);
 
             ReadOnlyCollection<IWebElement>? logoutElements = d.FindElements(By.ClassName(logoutClass));
             if (logoutElements.Count > 0)
@@ -135,7 +155,7 @@ class Program
 
 record LoginInfo(string Login, string Password, string RootUrl, string Mac);
 
-class NoLoginException : Exception
+class WolException : Exception
 {
-    public NoLoginException(string text) : base(text) { }
+    public WolException(string text) : base(text) { }
 }
