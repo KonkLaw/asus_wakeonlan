@@ -12,8 +12,8 @@ class Program
 
     private static void Main()
     {
-        AppDomain.CurrentDomain.ProcessExit += HandleByDriverDisposing;
-        AppDomain.CurrentDomain.UnhandledException += HandleByDriverDisposing;
+        AppDomain.CurrentDomain.ProcessExit += HandleExit;
+        AppDomain.CurrentDomain.UnhandledException += HandleExit;
 
         LoginInfo loginInfo = ReadConfig();
         Console.WriteLine("Driver creation");
@@ -39,7 +39,7 @@ class Program
         }
         finally
         {
-            driver.Quit();
+            DisposeDriver();
         }
     }
 
@@ -63,14 +63,22 @@ class Program
 
     private static FirefoxOptions GetFirefoxOptions()
     {
+        const bool isRelease = true;
         var options = new FirefoxOptions
         {
             AcceptInsecureCertificates = true,
         };
-        options.AddArgument("--headless");
-        // Size is important for consistent behaviour
-        options.AddArgument("--window-size=1920,1080");
-        return options;
+        if (isRelease)
+        {
+            options.AddArgument("--headless");
+            // Size is important for consistent behaviour
+            options.AddArgument("--window-size=1920,1080");
+            return options;
+        }
+        else
+        {
+            return options;
+        }
     }
 
     private static void RunWol(WebDriver driver, LoginInfo loginInfo)
@@ -150,7 +158,17 @@ class Program
         driver.SwitchTo().Alert().Accept();
     }
 
-    private static void HandleByDriverDisposing(object? sender, EventArgs e) => driver?.Dispose();
+    private static void HandleExit(object? sender, EventArgs e)
+    {
+        Console.WriteLine("Handle exit");
+        DisposeDriver();
+    }
+
+    private static void DisposeDriver()
+    {
+        driver?.Dispose();
+        driver = null;
+    }
 }
 
 record LoginInfo(string Login, string Password, string RootUrl, string Mac);
