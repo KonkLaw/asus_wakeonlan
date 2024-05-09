@@ -15,12 +15,12 @@ class Program
         AppDomain.CurrentDomain.ProcessExit += HandleExit;
         AppDomain.CurrentDomain.UnhandledException += HandleExit;
 
-        LoginInfo loginInfo = ReadConfig();
+        Config config = ConfigHelper.LoadConfig();
         Console.WriteLine("Driver creation");
         driver = GetWebDriver();
         try
         {
-            RunWol(driver, loginInfo);
+            RunWol(driver, config);
             Console.WriteLine("Success");
         }
         catch (WolException exception)
@@ -41,16 +41,6 @@ class Program
         {
             DisposeDriver();
         }
-    }
-
-    private static LoginInfo ReadConfig()
-    {
-        string[] settings = File.ReadAllLines("settings.txt");
-        string login = Encoding.UTF8.GetString(Convert.FromBase64String(settings[0]));
-        string password = Encoding.UTF8.GetString(Convert.FromBase64String(settings[1]));
-        string rootUrl = settings[2];
-        string mac = settings[3];
-        return new LoginInfo(login, password, rootUrl, mac);
     }
 
     private static WebDriver GetWebDriver()
@@ -81,9 +71,9 @@ class Program
         }
     }
 
-    private static void RunWol(WebDriver driver, LoginInfo loginInfo)
+    private static void RunWol(WebDriver driver, Config config)
     {
-        string url = loginInfo.RootUrl + "/Main_Login.asp";
+        string url = config.RootUrl + "/Main_Login.asp";
 
         const string wolLocalPath = "/Main_WOL_Content.asp";
         const int waitForActiveSeconds = 15;
@@ -98,7 +88,7 @@ class Program
 
         Console.WriteLine("Load start page");
         TimeSpan defaultTimeout = driver.Manage().Timeouts().PageLoad;
-        const int defaultLoginTimeoutSec = 1;
+        int defaultLoginTimeoutSec = config.LoadPageTimeOutMilliseconds;
         driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(defaultLoginTimeoutSec);
         int connectionAttempt = 5;
         while (true)
@@ -143,14 +133,14 @@ class Program
                 return element;
             return null;
         })!;
-        singInInput.SendKeys(loginInfo.Login);
-        driver.FindElement(By.Name(singInNamePassword)).SendKeys(loginInfo.Password);
+        singInInput.SendKeys(config.Login);
+        driver.FindElement(By.Name(singInNamePassword)).SendKeys(config.Password);
         driver.FindElement(By.Id(singInIdButtonId)).Click();
         Console.WriteLine("Waking up");
         Uri uri = new Uri(driver.Url);
         url = uri.AbsoluteUri.Substring(0, uri.AbsoluteUri.Length - uri.LocalPath.Length) + wolLocalPath;
         driver.Navigate().GoToUrl(url);
-        driver.FindElement(By.Name(macTextBoxName)).SendKeys(loginInfo.Mac);
+        driver.FindElement(By.Name(macTextBoxName)).SendKeys(config.WakeUpMac);
         driver.FindElement(By.Id(wakeButtonId)).Click();
         Thread.Sleep(1000); // wait for waking up
         Console.WriteLine("Logging out");
@@ -170,8 +160,6 @@ class Program
         driver = null;
     }
 }
-
-record LoginInfo(string Login, string Password, string RootUrl, string Mac);
 
 class WolException : Exception
 {
