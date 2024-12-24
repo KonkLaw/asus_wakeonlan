@@ -1,5 +1,4 @@
 ﻿using System.Collections.ObjectModel;
-using System.Text;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Firefox;
 using OpenQA.Selenium.Support.UI;
@@ -17,7 +16,7 @@ class Program
 
         Config config = ConfigHelper.LoadConfig();
         Console.WriteLine("Driver creation");
-        driver = GetWebDriver();
+        driver = GetWebDriver(config.IsDebug);
         try
         {
             RunWol(driver, config);
@@ -25,8 +24,12 @@ class Program
         }
         catch (WolException exception)
         {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine();
+            Console.WriteLine("Error:");
             Console.WriteLine(exception.Message);
             Console.WriteLine();
+            Console.ResetColor();
             Console.WriteLine("Press any key");
             Console.ReadLine();
         }
@@ -43,22 +46,21 @@ class Program
         }
     }
 
-    private static WebDriver GetWebDriver()
+    private static WebDriver GetWebDriver(bool isDebug)
     {
         var driverService = FirefoxDriverService.CreateDefaultService();
         driverService.HideCommandPromptWindow = true;
-        WebDriver webDriver = new FirefoxDriver(driverService, GetFirefoxOptions());
+        WebDriver webDriver = new FirefoxDriver(driverService, GetFirefoxOptions(isDebug));
         return webDriver;
     }
 
-    private static FirefoxOptions GetFirefoxOptions()
+    private static FirefoxOptions GetFirefoxOptions(bool isDebug)
     {
-        const bool isRelease = true;
         var options = new FirefoxOptions
         {
             AcceptInsecureCertificates = true,
         };
-        if (isRelease)
+        if (!isDebug)
         {
             options.AddArgument("--headless");
             // Size is important for consistent behaviour
@@ -82,16 +84,19 @@ class Program
         const string sessionIsBusyClass = "nologin-text";
         const string singInNamePassword = "login_passwd";
         const string singInIdButtonId = "button";
+        const string captchaField = "captcha_field";
         const string macTextBoxName = "destIP";
         const string wakeButtonId = "cmdBtn";
         const string logoutScript = "javascript:logout();";
 
         Console.WriteLine("Load start page");
-        TimeSpan defaultTimeout = driver.Manage().Timeouts().PageLoad;
-        int defaultLoginTimeoutSec = config.LoadPageTimeOutMilliseconds;
-        driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(defaultLoginTimeoutSec);
-        int connectionAttempt = 5;
-        while (true)
+        TimeSpan initialTimeout = driver.Manage().Timeouts().PageLoad;
+        const int defaultLoginTimeoutMilliSec = 1000;
+        const int defaultConnectionAttempt = 5;
+
+        int connectionAttempt = defaultConnectionAttempt;
+        driver.Manage().Timeouts().PageLoad = TimeSpan.FromMilliseconds(defaultLoginTimeoutMilliSec);
+        do
         {
             try
             {
@@ -103,10 +108,14 @@ class Program
                 connectionAttempt--;
                 if (connectionAttempt == 0)
                     throw new WolException("Can't connect to router");
+
                 Console.WriteLine(" Can't connect to router. Reload.");
+                driver.Manage().Timeouts().PageLoad = 2 * driver.Manage().Timeouts().PageLoad;
             }
-        }
-        driver.Manage().Timeouts().PageLoad = defaultTimeout;
+        } while (true);
+
+        
+        driver.Manage().Timeouts().PageLoad = initialTimeout;
 
         Console.WriteLine("Logging in");
         var webDriverWait = new WebDriverWait(driver, TimeSpan.FromSeconds(waitForActiveSeconds));
@@ -140,6 +149,11 @@ class Program
         Uri uri = new Uri(driver.Url);
         url = uri.AbsoluteUri.Substring(0, uri.AbsoluteUri.Length - uri.LocalPath.Length) + wolLocalPath;
         driver.Navigate().GoToUrl(url);
+
+        ReadOnlyCollection<IWebElement>? captureFields = driver.FindElements(By.Id(captchaField));
+        if (captureFields.Any(c => c.Displayed))
+            throw new WolException("Captcha is required");
+
         driver.FindElement(By.Name(macTextBoxName)).SendKeys(config.WakeUpMac);
         driver.FindElement(By.Id(wakeButtonId)).Click();
         Thread.Sleep(1000); // wait for waking up

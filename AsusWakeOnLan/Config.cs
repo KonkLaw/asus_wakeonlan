@@ -5,11 +5,23 @@ namespace AsusWakeOnLan;
 
 class Config
 {
-	public string? Login;
-	public string? Password;
-	public string? RootUrl;
-	public string? WakeUpMac;
-	public int LoadPageTimeOutMilliseconds;
+    public string? Login {get; init;}
+	public string? Password {get; init; }
+	public string? RootUrl {get; init; }
+	public string? WakeUpMac {get; init; }
+    public bool IsDebug { get; init; }
+
+	public Config(string? login, string? password, string? rootUrl, string? wakeUpMac, bool isRelease)
+    {
+        Login = login;
+        Password = password;
+        RootUrl = rootUrl;
+        WakeUpMac = wakeUpMac;
+        IsDebug = isRelease;
+    }
+
+    public Config CloneWithNewCredentials(string newLogin, string newPassword)
+        => new(newLogin, newPassword, RootUrl, WakeUpMac, IsDebug);
 }
 
 static class ConfigHelper
@@ -19,13 +31,20 @@ static class ConfigHelper
 		const string fileName = "settings.txt";
 		string content = File.ReadAllText(fileName);
 		Config result = JsonConvert.DeserializeObject<Config>(content)!;
-		result.Login = Encoding.UTF8.GetString(Convert.FromBase64String(result.Login!));
-		result.Password = Encoding.UTF8.GetString(Convert.FromBase64String(result.Password!));
-		const int minTime = 1000;
-		const int maxTime = 30_000;
-		if (result.LoadPageTimeOutMilliseconds < minTime
-		    || result.LoadPageTimeOutMilliseconds > maxTime)
-			throw new ArgumentException($"Time should be > {minTime} and < {maxTime}");
-		return result;
+
+		if (result.Login == null)
+            throw new ArgumentException("Login is null");
+		if (result.Password == null)
+            throw new ArgumentException("Password is null");
+		if (result.RootUrl == null)
+            throw new ArgumentException("RootUrl is null");
+		if (result.WakeUpMac == null)
+            throw new ArgumentException("WakeUpMac is null");
+
+        result = result.CloneWithNewCredentials(
+            Encoding.UTF8.GetString(Convert.FromBase64String(result.Login!)),
+            Encoding.UTF8.GetString(Convert.FromBase64String(result.Password!)));
+
+        return result;
 	}
 }
