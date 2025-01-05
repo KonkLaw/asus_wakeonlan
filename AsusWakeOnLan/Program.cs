@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.Diagnostics;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Firefox;
 using OpenQA.Selenium.Support.UI;
@@ -87,6 +88,7 @@ class Program
         const string captchaField = "captcha_field";
         const string macTextBoxName = "destIP";
         const string wakeButtonId = "cmdBtn";
+        const string loadingIconId = "loadingIcon";
         const string logoutScript = "javascript:logout();";
 
         Console.WriteLine("Load start page");
@@ -155,8 +157,31 @@ class Program
             throw new WolException("Captcha is required");
 
         driver.FindElement(By.Name(macTextBoxName)).SendKeys(config.WakeUpMac);
+
+        IWebElement loadingIcon = driver.FindElement(By.Id(loadingIconId));
         driver.FindElement(By.Id(wakeButtonId)).Click();
-        Thread.Sleep(1000); // wait for waking up
+
+        // Checking wait indicator. It should pop up and hide.
+        Console.WriteLine(" Send request and wait...");
+        Stopwatch time = Stopwatch.StartNew();
+        bool wasShown = false;
+        while (true)
+        {
+            bool isShowing = loadingIcon.Enabled && loadingIcon.Displayed;
+            if (wasShown && !isShowing)
+            {
+                Console.WriteLine($" wait was ended successfully ({time.ElapsedMilliseconds})");
+                break;
+            }
+            if (isShowing)
+                wasShown = true;
+
+            if (time.ElapsedMilliseconds > TimeSpan.FromSeconds(5).TotalMilliseconds)
+            {
+                Console.WriteLine(" wait was tool long - exit");
+                break;
+            }
+        }
         Console.WriteLine("Logging out");
         driver.ExecuteScript(logoutScript);
         driver.SwitchTo().Alert().Accept();
