@@ -182,8 +182,10 @@ class Program
                 break;
             }
         }
+
+        IWebElement logOutButton = driver.FindElement(By.XPath("//div[text()=\"Logout\"]"));
+        logOutButton.Click();
         Console.WriteLine("Logging out");
-        driver.ExecuteScript(logoutScript);
         driver.SwitchTo().Alert().Accept();
     }
 
