@@ -152,7 +152,18 @@ class Program
         url = uri.AbsoluteUri.Substring(0, uri.AbsoluteUri.Length - uri.LocalPath.Length) + wolLocalPath;
         driver.Navigate().GoToUrl(url);
 
-        //Thread.Sleep(2000);
+        const int waitPageLoad = 5;
+        const string udbStatusIconId = "usb_status";
+        var pageLoadWait = new WebDriverWait(driver, TimeSpan.FromSeconds(waitPageLoad));
+        _ = pageLoadWait.Until(d =>
+        {
+            IWebElement? icon = d.FindElement(By.Id(udbStatusIconId));
+            if (icon is { Displayed: true, Enabled: true })
+                return icon;
+            Console.WriteLine(" Page is not fully loaded");
+            return null;
+        });
+
 
         ReadOnlyCollection<IWebElement>? captureFields = driver.FindElements(By.Id(captchaField));
         if (captureFields.Any(c => c.Displayed))
@@ -172,7 +183,7 @@ class Program
             bool isShowing = loadingIcon.Enabled && loadingIcon.Displayed;
             if (wasShown && !isShowing)
             {
-                Console.WriteLine($" wait was ended successfully ({time.ElapsedMilliseconds})");
+                Console.WriteLine($" Wait was ended successfully ({time.ElapsedMilliseconds})");
                 break;
             }
             if (isShowing)
