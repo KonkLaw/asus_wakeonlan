@@ -1,8 +1,5 @@
-﻿using System.Collections.ObjectModel;
-using System.Diagnostics;
-using OpenQA.Selenium;
+﻿using OpenQA.Selenium;
 using OpenQA.Selenium.Firefox;
-using OpenQA.Selenium.Support.UI;
 
 namespace AsusWakeOnLan;
 
@@ -20,7 +17,7 @@ class Program
         driver = GetWebDriver(config.IsDebug);
         try
         {
-            RunWol(driver, config);
+            new WolHelper(driver, config).RunWol();
             Console.WriteLine("Success");
         }
         catch (WolException exception)
@@ -74,150 +71,6 @@ class Program
         }
     }
 
-    private static void RunWol(WebDriver driver, Config config)
-    {
-        string url = config.RootUrl + "/Main_Login.asp";
-
-        const string wolLocalPath = "/Main_WOL_Content.asp";
-        const string logoutClass = "logout-text";
-        const string singInIdLogin = "login_username";
-        const string sessionIsBusyClass = "nologin-text";
-        const string singInNamePassword = "login_passwd";
-        const string singInIdButtonId = "button";
-        const string captchaField = "captcha_field";
-        const string macTextBoxName = "destIP";
-        const string wakeButtonId = "cmdBtn";
-        const string loadingIconId = "loadingIcon";
-        const string logoutScript = "javascript:logout();";
-
-        Console.WriteLine("Load start page");
-        TimeSpan initialTimeout = driver.Manage().Timeouts().PageLoad;
-        const int defaultLoginTimeoutMilliSec = 1000;
-        const int defaultConnectionAttempt = 5;
-
-        int connectionAttempt = defaultConnectionAttempt;
-        driver.Manage().Timeouts().PageLoad = TimeSpan.FromMilliseconds(defaultLoginTimeoutMilliSec);
-        do
-        {
-            try
-            {
-                driver.Navigate().GoToUrl(url);
-                break;
-            }
-            catch (WebDriverException)
-            {
-                connectionAttempt--;
-                if (connectionAttempt == 0)
-                    throw new WolException("Can't connect to router");
-
-                Console.WriteLine(" Can't connect to router. Reload.");
-                driver.Manage().Timeouts().PageLoad = 2 * driver.Manage().Timeouts().PageLoad;
-            }
-        } while (true);
-
-        
-        driver.Manage().Timeouts().PageLoad = initialTimeout;
-
-        Console.WriteLine("Logging in");
-        const int waitForLoginSeconds = 15;
-        var loginWait = new WebDriverWait(driver, TimeSpan.FromSeconds(waitForLoginSeconds));
-        IWebElement singInInput = loginWait.Until(d =>
-        {
-            ReadOnlyCollection<IWebElement>? elements = d.FindElements(By.ClassName(sessionIsBusyClass));
-            if (elements.Count > 0)
-                throw new WolException(elements[0].Text);
-
-            ReadOnlyCollection<IWebElement>? logoutElements = d.FindElements(By.ClassName(logoutClass));
-            if (logoutElements.Count > 0)
-            {
-                d.Navigate().Refresh();
-                Console.WriteLine(" Logout screen. Reload.");
-                return null;
-            }
-
-            Console.WriteLine(" Waiting for load");
-            elements = d.FindElements(By.Id(singInIdLogin));
-            if (elements.Count == 0)
-                return null;
-            IWebElement element = elements[0];
-            if (element.Displayed)
-                return element;
-            return null;
-        })!;
-        singInInput.SendKeys(config.Login);
-        driver.FindElement(By.Name(singInNamePassword)).SendKeys(config.Password);
-        driver.FindElement(By.Id(singInIdButtonId)).Click();
-        Console.WriteLine("Waking up");
-        Uri uri = new Uri(driver.Url);
-        url = uri.AbsoluteUri.Substring(0, uri.AbsoluteUri.Length - uri.LocalPath.Length) + wolLocalPath;
-        driver.Navigate().GoToUrl(url);
-
-        const int waitPageLoad = 5;
-        const string udbStatusIconId = "usb_status";
-        var pageLoadWait = new WebDriverWait(driver, TimeSpan.FromSeconds(waitPageLoad));
-        _ = pageLoadWait.Until(d =>
-        {
-            IWebElement? icon = d.FindElement(By.Id(udbStatusIconId));
-            if (icon is { Displayed: true, Enabled: true })
-                return icon;
-            Console.WriteLine(" Page is not fully loaded");
-            return null;
-        });
-
-
-        ReadOnlyCollection<IWebElement>? captureFields = driver.FindElements(By.Id(captchaField));
-        if (captureFields.Any(c => c.Displayed))
-            throw new WolException("Captcha is required");
-
-        driver.FindElement(By.Name(macTextBoxName)).SendKeys(config.WakeUpMac);
-
-        IWebElement loadingIcon = driver.FindElement(By.Id(loadingIconId));
-        driver.FindElement(By.Id(wakeButtonId)).Click();
-
-        // Checking wait indicator. It should pop up and hide.
-        Console.WriteLine(" Send request and wait...");
-        Stopwatch time = Stopwatch.StartNew();
-        bool wasShown = false;
-        while (true)
-        {
-            bool isShowing = loadingIcon.Enabled && loadingIcon.Displayed;
-            if (wasShown && !isShowing)
-            {
-                Console.WriteLine($" Wait was ended successfully ({time.ElapsedMilliseconds})");
-                break;
-            }
-            if (isShowing)
-                wasShown = true;
-
-            if (time.ElapsedMilliseconds > TimeSpan.FromSeconds(5).TotalMilliseconds)
-            {
-                Console.WriteLine(" wait was tool long - exit");
-                break;
-            }
-        }
-
-        IWebElement logOutButton = driver.FindElement(By.XPath("//div[text()=\"Logout\"]"));
-        logOutButton.Click();
-        Console.WriteLine("Logging out");
-
-        const int exitAlertWaitSeconds = 5;
-        var alertWait = new WebDriverWait(driver, TimeSpan.FromSeconds(exitAlertWaitSeconds));
-        IAlert alert = alertWait.Until(webDriver =>
-        {
-            try
-            {
-                return webDriver.SwitchTo().Alert();
-            }
-            catch (NoAlertPresentException e)
-            {
-                Console.WriteLine(" can't locate logout");
-                return null;
-            }
-        })!;
-        alert.Accept();
-        Console.WriteLine("Logged out");
-    }
-
     private static void HandleExit(object? sender, EventArgs e)
     {
         Console.WriteLine("Handle exit");
@@ -229,9 +82,4 @@ class Program
         driver?.Dispose();
         driver = null;
     }
-}
-
-class WolException : Exception
-{
-    public WolException(string text) : base(text) { }
 }
