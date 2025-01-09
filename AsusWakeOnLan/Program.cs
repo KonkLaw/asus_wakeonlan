@@ -79,7 +79,6 @@ class Program
         string url = config.RootUrl + "/Main_Login.asp";
 
         const string wolLocalPath = "/Main_WOL_Content.asp";
-        const int waitForActiveSeconds = 15;
         const string logoutClass = "logout-text";
         const string singInIdLogin = "login_username";
         const string sessionIsBusyClass = "nologin-text";
@@ -120,8 +119,9 @@ class Program
         driver.Manage().Timeouts().PageLoad = initialTimeout;
 
         Console.WriteLine("Logging in");
-        var webDriverWait = new WebDriverWait(driver, TimeSpan.FromSeconds(waitForActiveSeconds));
-        IWebElement singInInput = webDriverWait.Until(d =>
+        const int waitForLoginSeconds = 15;
+        var loginWait = new WebDriverWait(driver, TimeSpan.FromSeconds(waitForLoginSeconds));
+        IWebElement singInInput = loginWait.Until(d =>
         {
             ReadOnlyCollection<IWebElement>? elements = d.FindElements(By.ClassName(sessionIsBusyClass));
             if (elements.Count > 0)
@@ -151,6 +151,8 @@ class Program
         Uri uri = new Uri(driver.Url);
         url = uri.AbsoluteUri.Substring(0, uri.AbsoluteUri.Length - uri.LocalPath.Length) + wolLocalPath;
         driver.Navigate().GoToUrl(url);
+
+        //Thread.Sleep(2000);
 
         ReadOnlyCollection<IWebElement>? captureFields = driver.FindElements(By.Id(captchaField));
         if (captureFields.Any(c => c.Displayed))
@@ -186,7 +188,23 @@ class Program
         IWebElement logOutButton = driver.FindElement(By.XPath("//div[text()=\"Logout\"]"));
         logOutButton.Click();
         Console.WriteLine("Logging out");
-        driver.SwitchTo().Alert().Accept();
+
+        const int exitAlertWaitSeconds = 5;
+        var alertWait = new WebDriverWait(driver, TimeSpan.FromSeconds(exitAlertWaitSeconds));
+        IAlert alert = alertWait.Until(webDriver =>
+        {
+            try
+            {
+                return webDriver.SwitchTo().Alert();
+            }
+            catch (NoAlertPresentException e)
+            {
+                Console.WriteLine(" can't locate logout");
+                return null;
+            }
+        })!;
+        alert.Accept();
+        Console.WriteLine("Logged out");
     }
 
     private static void HandleExit(object? sender, EventArgs e)
