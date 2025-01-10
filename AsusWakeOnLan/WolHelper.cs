@@ -179,6 +179,7 @@ readonly struct WolHelper
             catch (NoAlertPresentException e)
             {
                 Console.WriteLine(" can't locate logout");
+                logOutButton.Click();
                 return null;
             }
         })!;
