@@ -1,34 +1,51 @@
 ﻿using OpenQA.Selenium;
 using OpenQA.Selenium.Support.UI;
+using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Net.NetworkInformation;
 
 namespace AsusWakeOnLan;
 
-readonly struct WolHelper
+class WakeOnLan
 {
     private readonly WebDriver driver;
     private readonly Config config;
+    private readonly OutputHelper outputHelper;
 
-    public WolHelper(WebDriver driver, Config config)
+    public WakeOnLan(WebDriver driver, Config config, OutputHelper outputHelper)
     {
         this.driver = driver;
         this.config = config;
+        this.outputHelper = outputHelper;
     }
 
     public void RunWol()
     {
-        Console.WriteLine("Loading start page");
-        LoadPage();
-        Console.WriteLine("Logging in");
-        Login();
-        Console.WriteLine("Navigating to WOL");
-        NavigateToWol();
-        Console.WriteLine("Waking up");
-        WakeUpAndWait();
-        Console.WriteLine("Logging out");
-        Logout();
-        Console.WriteLine("Logged out");
+        outputHelper.WriteLine("Loading start page");
+            outputHelper.Indent();
+            LoadPage();
+            outputHelper.Unindent();
+        outputHelper.WriteLine("Logging in");
+            outputHelper.Indent();
+            Login();
+            outputHelper.Unindent();
+        outputHelper.WriteLine("Navigating to WOL");
+            outputHelper.Indent();
+            NavigateToWol();
+            outputHelper.Unindent();
+        outputHelper.WriteLine("Waking up");
+            outputHelper.Indent();
+            WakeUpAndWait();
+            outputHelper.Unindent();
+        outputHelper.WriteLine("Logging out");
+            outputHelper.Indent();
+            Logout();
+            outputHelper.Unindent();
+        outputHelper.WriteLine("Ping PC");
+            outputHelper.Indent();
+            PingAndWait();
+            outputHelper.Unindent();
     }
 
     private void LoadPage()
@@ -36,29 +53,31 @@ readonly struct WolHelper
         TimeSpan initialTimeout = driver.Manage().Timeouts().PageLoad;
 
         const int defaultLoginTimeoutSec = 1;
-        const int defaultConnectionAttempt = 5;
         string url = config.RootUrl + "/Main_Login.asp";
 
-        int connectionAttempt = defaultConnectionAttempt;
+        int connectionAttempt = config.LoadPageAttempts;
         driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(defaultLoginTimeoutSec);
         do
         {
             try
             {
                 driver.Navigate().GoToUrl(url);
+                outputHelper.WriteLine("Ok");
                 break;
             }
-            catch (WebDriverException)
+            catch (WebDriverException exception)
             {
                 connectionAttempt--;
                 if (connectionAttempt == 0)
                     throw new WolException("Can't connect to router");
 
-                Console.WriteLine(" Can't connect to router. Reload.");
-                driver.Manage().Timeouts().PageLoad = 2 * driver.Manage().Timeouts().PageLoad;
+
+                TimeSpan newTimeout = 2 * driver.Manage().Timeouts().PageLoad;
+                double newTimeoutSeconds = newTimeout.TotalSeconds;
+                outputHelper.WriteLine($"Can't load router page. Reload with wait = {newTimeoutSeconds}. Exception: {exception.Message}");
+                driver.Manage().Timeouts().PageLoad = newTimeout;
             }
         } while (true);
-
         driver.Manage().Timeouts().PageLoad = initialTimeout;
     }
 
@@ -69,9 +88,8 @@ readonly struct WolHelper
         const string singInIdLogin = "login_username";
         const string singInNamePassword = "login_passwd";
         const string singInIdButtonId = "button";
-        const int waitForLoginSeconds = 15;
 
-        var loginWait = new WebDriverWait(driver, TimeSpan.FromSeconds(waitForLoginSeconds));
+        var loginWait = new WebDriverWait(driver, TimeSpan.FromSeconds(config.WaitForLoginSeconds));
         IWebElement loginInput = loginWait.Until(d =>
         {
             // sometimes model is busy by other session
@@ -84,19 +102,20 @@ readonly struct WolHelper
             if (logoutElements.Count > 0)
             {
                 d.Navigate().Refresh();
-                Console.WriteLine(" Logout screen. Reload.");
+                outputHelper.WriteLine("Logout screen. Reload.");
                 return null;
             }
 
             elements = d.FindElements(By.Id(singInIdLogin));
             if (elements.Count != 0 && elements[0].Displayed)
                 return elements[0];
-            Console.WriteLine(" Waiting for loading");
+            outputHelper.WriteLine("Waiting for loading");
             return null;
         })!;
         loginInput.SendKeys(config.Login);
         driver.FindElement(By.Name(singInNamePassword)).SendKeys(config.Password);
         driver.FindElement(By.Id(singInIdButtonId)).Click();
+        outputHelper.WriteLine("Ok");
     }
 
     private void NavigateToWol()
@@ -112,14 +131,16 @@ readonly struct WolHelper
         // one of ideas - wait until page is fully loaded
         // to track it we choose some element which is appears in the end of loading
         // and wait until it is displayed
-        const int waitPageLoad = 5;
-        var pageLoadWait = new WebDriverWait(driver, TimeSpan.FromSeconds(waitPageLoad));
+        var pageLoadWait = new WebDriverWait(driver, TimeSpan.FromSeconds(config.WaitWolPageLoadSeconds));
         _ = pageLoadWait.Until(d =>
         {
             IWebElement? icon = d.FindElement(By.Id(udbStatusIconId));
             if (icon is { Displayed: true, Enabled: true })
+            {
+                outputHelper.WriteLine("Ok");
                 return icon;
-            Console.WriteLine(" Page is not fully loaded");
+            }
+            outputHelper.WriteLine("Page is not fully loaded");
             return null;
         });
     }
@@ -141,7 +162,7 @@ readonly struct WolHelper
         driver.FindElement(By.Id(wakeButtonId)).Click();
 
         // Checking wait indicator. It should pop up and hide.
-        Console.WriteLine(" Send request and wait...");
+        outputHelper.WriteLine("Send request and wait...");
         Stopwatch time = Stopwatch.StartNew();
         bool wasShown = false;
         while (true)
@@ -149,15 +170,15 @@ readonly struct WolHelper
             bool isShowing = loadingIcon.Enabled && loadingIcon.Displayed;
             if (wasShown && !isShowing)
             {
-                Console.WriteLine($" Wait was ended successfully ({time.ElapsedMilliseconds} ms)");
+                outputHelper.WriteLine($"Wait was ended successfully ({time.ElapsedMilliseconds} ms)");
                 break;
             }
             if (isShowing)
                 wasShown = true;
 
-            if (time.ElapsedMilliseconds > TimeSpan.FromSeconds(5).TotalMilliseconds)
+            if (time.ElapsedMilliseconds > TimeSpan.FromSeconds(config.WaitIndicatorWaitingSeconds).TotalMilliseconds)
             {
-                Console.WriteLine(" wait was tool long - exit");
+                outputHelper.WriteLine("Wait was tool long - exit");
                 break;
             }
         }
@@ -178,11 +199,33 @@ readonly struct WolHelper
             }
             catch (NoAlertPresentException e)
             {
-                Console.WriteLine(" can't locate logout");
+                outputHelper.WriteLine("can't locate logout");
                 logOutButton.Click();
                 return null;
             }
         })!;
+        outputHelper.WriteLine("Ok");
         alert.Accept();
+    }
+
+    private void PingAndWait()
+    {
+        using (Ping ping = new())
+        {
+            int attempts = config.PingAttempts;
+            while (attempts > 0)
+            {
+                PingReply reply = ping.Send(config.RemoteIP,
+                    (int)TimeSpan.FromSeconds(config.PingTimeoutSeconds).TotalMilliseconds);
+                if (reply.Status == IPStatus.Success)
+                {
+                    outputHelper.WriteLine($"Ping successful: {reply.RoundtripTime} ms");
+                    return;
+                }
+                outputHelper.WriteLine($"Ping failed: {reply.Status}");
+                attempts--;
+            }
+            outputHelper.WriteLine("Exit by attempts count");
+        }
     }
 }

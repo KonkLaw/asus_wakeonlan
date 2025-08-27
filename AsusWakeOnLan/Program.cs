@@ -1,9 +1,8 @@
 ﻿using OpenQA.Selenium;
-using OpenQA.Selenium.Firefox;
 
 namespace AsusWakeOnLan;
 
-class Program
+static class Program
 {
     private static WebDriver? driver;
 
@@ -11,13 +10,14 @@ class Program
     {
         AppDomain.CurrentDomain.ProcessExit += HandleExit;
         AppDomain.CurrentDomain.UnhandledException += HandleExit;
+        var outputHelper = new OutputHelper();
 
         Config config = ConfigHelper.LoadConfig();
-        Console.WriteLine("Driver creation");
-        driver = GetWebDriver(config.IsDebug);
+        outputHelper.WriteLine("Driver creation");
+        driver = WebDriverHelper.GetWebDriver(config.IsDebug);
         try
         {
-            new WolHelper(driver, config).RunWol();
+            new WakeOnLan(driver, config, outputHelper).RunWol();
             Console.WriteLine("Success");
         }
         catch (WolException exception)
@@ -41,36 +41,10 @@ class Program
         finally
         {
             DisposeDriver();
+            AppDomain.CurrentDomain.ProcessExit -= HandleExit;
         }
     }
-
-    private static WebDriver GetWebDriver(bool isDebug)
-    {
-        var driverService = FirefoxDriverService.CreateDefaultService();
-        driverService.HideCommandPromptWindow = true;
-        WebDriver webDriver = new FirefoxDriver(driverService, GetFirefoxOptions(isDebug));
-        return webDriver;
-    }
-
-    private static FirefoxOptions GetFirefoxOptions(bool isDebug)
-    {
-        var options = new FirefoxOptions
-        {
-            AcceptInsecureCertificates = true,
-        };
-        if (!isDebug)
-        {
-            options.AddArgument("--headless");
-            // Size is important for consistent behaviour
-            options.AddArgument("--window-size=1920,1080");
-            return options;
-        }
-        else
-        {
-            return options;
-        }
-    }
-
+    
     private static void HandleExit(object? sender, EventArgs e)
     {
         Console.WriteLine("Handle exit");
